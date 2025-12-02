@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 실습실 안내 키오스크</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f3f4f6;
+            overflow: hidden; /* 키오스크라 스크롤 방지 */
+            /* user-select: none; 제거: 마우스 사용 시 텍스트 선택 가능하도록 변경 */
+        }
+
+        /* 층별 지도 스타일 - 크기 조정 */
+        .floor-plan {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 8px; /* 간격 축소 */
+            width: 100%;
+            height: 250px; /* 높이 축소 300 -> 250 */
+            background: #e5e7eb;
+            padding: 8px;
+            border-radius: 12px;
+        }
+        .room {
+            background: white;
+            border: 2px solid #d1d5db;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #374151;
+            transition: all 0.3s;
+            font-size: 0.9rem; /* 폰트 사이즈 조정 */
+            cursor: pointer; /* 마우스 오버 시 커서 변경 */
+        }
+        .room.active {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #2563eb;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+            animation: pulse 2s infinite;
+        }
+        .corridor {
+            grid-column: span 4;
+            background: #9ca3af;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+
+    <!-- 상단 헤더 - 높이 및 패딩 조정 -->
+    <header class="bg-blue-900 text-white p-4 flex justify-between items-center shadow-lg z-10 h-16">
+        <div class="flex items-center gap-3">
+            <!-- 뒤로가기 버튼 -->
+            <button id="header-back-btn" onclick="router('home')" class="hidden bg-blue-800 hover:bg-blue-700 text-white p-2 rounded-lg mr-1 transition shadow-md border border-blue-700 active:scale-95" title="뒤로가기">
+                <i class="fas fa-arrow-left text-lg"></i>
+            </button>
+            <i class="fas fa-university text-2xl"></i>
+            <div>
+                <h1 class="text-xl font-bold">공학관 실습실 안내 시스템</h1>
+            </div>
+        </div>
+        <div class="text-right flex items-center gap-4">
+            <div id="current-date" class="text-xs text-blue-200">2024년 1월 1일 월요일</div>
+            <div id="current-time" class="text-2xl font-mono font-bold">00:00</div>
+        </div>
+    </header>
+
+    <!-- 메인 컨텐츠 영역 -->
+    <main id="app-container" class="flex-1 relative flex items-center justify-center p-6 bg-gray-50">
+        <!-- 자바스크립트로 화면이 여기에 렌더링 됩니다 -->
+    </main>
+
+    <!-- 하단 푸터 (네비게이션) - 높이 축소 -->
+    <footer id="footer-nav" class="bg-white border-t p-3 hidden shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <div class="flex justify-between items-center max-w-5xl mx-auto w-full">
+            <button onclick="router('home')" class="flex items-center gap-2 text-gray-600 hover:text-blue-700 px-4 py-2 rounded-lg hover:bg-gray-100 transition text-sm">
+                <i class="fas fa-home text-lg"></i>
+                <span class="font-bold">메인으로</span>
+            </button>
+            <div class="text-gray-500 font-bold text-sm">
+                접속자: <span id="user-name-display" class="text-blue-600"></span>
+            </div>
+            <button onclick="logout()" class="flex items-center gap-2 text-red-500 hover:text-red-700 px-4 py-2 rounded-lg hover:bg-red-50 transition text-sm">
+                <i class="fas fa-sign-out-alt text-lg"></i>
+                <span class="font-bold">로그아웃</span>
+            </button>
+        </div>
+    </footer>
+
+    <script>
+        // --- 1. Mock Data (백엔드 대용 데이터) ---
+        const MOCK_DB = {
+            // 개강일을 2025년 9월 1일로 수정
+            semesterStart: new Date('2025-09-01'), 
+            users: [
+                { id: '2024001', name: '김철수', dept: '컴퓨터공학과' },
+                { id: '2024002', name: '이영희', dept: '소프트웨어학과' },
+                { id: 'admin', name: '관리자', dept: '교학팀' }
+            ],
+            schedules: [
+                { userId: '2024001', day: 1, start: '09:00', end: '12:00', subject: '웹프로그래밍기초', room: '301호' },
+                { userId: '2024001', day: 1, start: '13:00', end: '15:00', subject: '자료구조', room: '302호' },
+                { userId: '2024001', day: 2, start: '10:00', end: '12:00', subject: '운영체제', room: '304호' },
+                { userId: '2024001', day: 3, start: '14:00', end: '17:00', subject: '데이터베이스', room: '303호' },
+                { userId: '2024002', day: 1, start: '10:00', end: '13:00', subject: '인공지능개론', room: '304호' }
+            ],
+            locations: {
+                '301호': { desc: '제1 SW 실습실 (PC 40대)', floor: 3, gridIdx: 0 },
+                '302호': { desc: '제2 SW 실습실 (PC 40대)', floor: 3, gridIdx: 1 },
+                '303호': { desc: '임베디드 실습실', floor: 3, gridIdx: 2 },
+                '304호': { desc: '서버 실습실', floor: 3, gridIdx: 3 },
+            }
+        };
+
+        // --- 2. State Management ---
+        let state = {
+            currentUser: null,
+            currentView: 'login' // login, home, status, week, map
+        };
+
+        // --- 3. Utilities ---
+        function getWeeksDiff(startDate, endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const diffTime = Math.abs(end - start);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            return Math.ceil(diffDays / 7);
+        }
+
+        function getCurrentTimeInfo() {
+            const now = new Date();
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            return {
+                now: now,
+                dayIdx: now.getDay(), // 0~6
+                dayName: days[now.getDay()],
+                timeStr: now.toTimeString().slice(0, 5) // "HH:MM"
+            };
+        }
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('current-time').innerText = now.toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' });
+            document.getElementById('current-date').innerText = now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // --- 4. Main Logic & Rendering ---
+
+        const container = document.getElementById('app-container');
+        const footer = document.getElementById('footer-nav');
+        const userNameDisplay = document.getElementById('user-name-display');
+        const backBtn = document.getElementById('header-back-btn');
+
+        function render() {
+            container.innerHTML = '';
+            
+            if (state.currentView === 'login' || state.currentView === 'home') {
+                backBtn.classList.add('hidden');
+            } else {
+                backBtn.classList.remove('hidden');
+            }
+
+            if (state.currentView === 'login') {
+                renderLogin();
+                footer.classList.add('hidden');
+            } else {
+                renderContent();
+                footer.classList.remove('hidden');
+                userNameDisplay.innerText = `${state.currentUser.name} (${state.currentUser.id})`;
+            }
+        }
+
+        function router(viewName) {
+            state.currentView = viewName;
+            render();
+        }
+
+        // [화면 1] 로그인 화면 - 크기 축소
+        function renderLogin() {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'bg-white p-8 rounded-xl shadow-xl w-full max-w-md text-center fade-in border border-gray-100'; // max-w-lg -> max-w-md, p-10 -> p-8
+            wrapper.innerHTML = `
+                <div class="mb-6">
+                    <i class="fas fa-user-circle text-5xl text-blue-600 mb-3"></i> <!-- 아이콘 크기 축소 -->
+                    <h2 class="text-2xl font-bold text-gray-800">학생 로그인</h2>
+                    <p class="text-gray-500 mt-1 text-sm">학번을 입력하여 시간표를 불러오세요.</p>
+                </div>
+                <input type="text" id="login-id" placeholder="예: 2024001" 
+                    class="w-full text-center text-xl p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4 transition"
+                    onkeypress="if(event.key==='Enter') tryLogin()">
+                <button onclick="tryLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold py-3 rounded-lg shadow-md transition transform active:scale-95">
+                    조회 시작하기
+                </button>
+                <div class="mt-4 text-xs text-gray-400">
+                    * 테스트용 학번: 2024001, 2024002
+                </div>
+            `;
+            container.appendChild(wrapper);
+            setTimeout(() => document.getElementById('login-id').focus(), 100);
+        }
+
+        function tryLogin() {
+            const inputId = document.getElementById('login-id').value;
+            const user = MOCK_DB.users.find(u => u.id === inputId);
+            
+            if (user) {
+                state.currentUser = user;
+                router('home');
+            } else {
+                alert('등록되지 않은 학번입니다.\n테스트 계정: 2024001 을 입력해보세요.');
+            }
+        }
+
+        function logout() {
+            state.currentUser = null;
+            router('login');
+        }
+
+        function renderContent() {
+            switch(state.currentView) {
+                case 'home': return renderHome();
+                case 'status': return renderStatus();
+                case 'week': return renderWeek();
+                case 'map': return renderMap();
+            }
+        }
+
+        // [화면 2] 메인 메뉴 (대시보드) - 카드 크기 추가 축소
+        function renderHome() {
+            const grid = document.createElement('div');
+            grid.className = 'grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-5xl fade-in'; // gap-6 -> gap-5
+            
+            const menus = [
+                { id: 'status', title: '현재 수업 확인', icon: 'fa-chalkboard-user', color: 'bg-green-500', desc: '지금 수업 중인가요?' },
+                { id: 'week', title: '주차/학사일정', icon: 'fa-calendar-week', color: 'bg-orange-500', desc: '이번 학기 몇 주차?' },
+                { id: 'map', title: '실습실 위치안내', icon: 'fa-map-location-dot', color: 'bg-purple-500', desc: '강의실 위치 & QR' },
+            ];
+
+            menus.forEach(menu => {
+                const card = document.createElement('button');
+                card.onclick = () => router(menu.id);
+                // h-64 -> h-52 (약 208px), p-6 -> p-5
+                card.className = `flex flex-col items-center justify-center p-5 rounded-xl shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 bg-white h-52 border border-gray-100 group`;
+                card.innerHTML = `
+                    <!-- w-20 h-20 -> w-16 h-16, text-3xl -> text-2xl -->
+                    <div class="w-16 h-16 ${menu.color} rounded-full flex items-center justify-center mb-3 text-white text-2xl shadow-inner group-hover:scale-105 transition">
+                        <i class="fas ${menu.icon}"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-1">${menu.title}</h3>
+                    <p class="text-gray-500 text-sm">${menu.desc}</p>
+                `;
+                grid.appendChild(card);
+            });
+            container.appendChild(grid);
+        }
+
+        // [기능 1] 수업 여부 확인 - 컴팩트화
+        function renderStatus() {
+            const timeInfo = getCurrentTimeInfo();
+            const todaySchedule = MOCK_DB.schedules.filter(s => 
+                s.userId === state.currentUser.id && s.day === timeInfo.dayIdx
+            );
+
+            const currentClass = todaySchedule.find(s => 
+                timeInfo.timeStr >= s.start && timeInfo.timeStr <= s.end
+            );
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'bg-white p-8 rounded-xl shadow-xl w-full max-w-3xl text-center fade-in border border-gray-100'; // max-w-4xl -> max-w-3xl
+            
+            let contentHtml = '';
+            
+            if (currentClass) {
+                contentHtml = `
+                    <div class="inline-block p-3 rounded-full bg-green-100 text-green-600 mb-4 animate-bounce">
+                        <i class="fas fa-check-circle text-5xl"></i> <!-- 아이콘 축소 -->
+                    </div>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-3">현재 수업 중입니다!</h2>
+                    <div class="bg-gray-50 rounded-lg p-6 mt-4 border-l-4 border-green-500 text-left mx-auto max-w-xl shadow-sm">
+                        <div class="flex justify-between items-end mb-2">
+                            <span class="text-lg text-gray-500">과목명</span>
+                            <span class="text-2xl font-bold text-gray-800">${currentClass.subject}</span>
+                        </div>
+                        <div class="border-b my-3 border-gray-200"></div>
+                        <div class="grid grid-cols-2 gap-4 text-base">
+                            <div><i class="far fa-clock text-blue-500 mr-2"></i>시간: ${currentClass.start} ~ ${currentClass.end}</div>
+                            <div><i class="fas fa-map-marker-alt text-red-500 mr-2"></i>장소: <b>${currentClass.room}</b></div>
+                        </div>
+                    </div>
+                    <button onclick="router('map')" class="mt-6 bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 text-base font-bold shadow-md transition">
+                        실습실 위치 보기
+                    </button>
+                `;
+            } else {
+                const nextClass = todaySchedule.find(s => s.start > timeInfo.timeStr);
+                
+                contentHtml = `
+                    <div class="inline-block p-3 rounded-full bg-gray-100 text-gray-500 mb-4">
+                        <i class="fas fa-coffee text-5xl"></i>
+                    </div>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-2">현재 수업이 없습니다.</h2>
+                    <p class="text-lg text-gray-500 mb-6">자유롭게 실습실을 이용하거나 휴식을 취하세요.</p>
+                    
+                    ${nextClass ? `
+                        <div class="bg-blue-50 p-4 rounded-lg inline-block text-left border border-blue-100">
+                            <p class="text-blue-800 font-bold mb-1 text-sm">다음 수업 예고</p>
+                            <p class="text-base">${nextClass.start} - ${nextClass.subject} (${nextClass.room})</p>
+                        </div>
+                    ` : '<p class="text-gray-400">오늘 남은 수업이 없습니다.</p>'}
+                `;
+            }
+
+            wrapper.innerHTML = contentHtml;
+            container.appendChild(wrapper);
+        }
+
+        // [기능 2] 주차 확인 - 컴팩트화
+        function renderWeek() {
+            const currentWeek = getWeeksDiff(MOCK_DB.semesterStart, new Date());
+            
+            const wrapper = document.createElement('div');
+            wrapper.className = 'bg-white p-8 rounded-xl shadow-xl w-full max-w-2xl text-center fade-in border-t-4 border-orange-500 border-x border-b border-gray-100'; // max-w-3xl -> max-w-2xl
+            
+            wrapper.innerHTML = `
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">학사 일정 안내</h2>
+                <div class="flex items-center justify-center gap-6 mb-8 text-sm">
+                    <div class="text-center">
+                        <p class="text-gray-500 mb-1">개강일</p>
+                        <div class="font-bold bg-gray-100 px-3 py-1.5 rounded">9월 1일</div>
+                    </div>
+                    <i class="fas fa-arrow-right text-gray-300 text-lg"></i>
+                    <div class="text-center">
+                        <p class="text-gray-500 mb-1">오늘</p>
+                        <div class="font-bold bg-gray-100 px-3 py-1.5 rounded">
+                            ${new Date().getMonth()+1}월 ${new Date().getDate()}일
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-orange-50 rounded-full w-48 h-48 flex flex-col items-center justify-center mx-auto border-4 border-orange-200 shadow-inner">
+                    <p class="text-orange-600 text-lg font-bold mb-0">지금은</p>
+                    <div class="text-6xl font-extrabold text-orange-600 font-mono">${currentWeek}</div>
+                    <p class="text-orange-600 text-lg font-bold mt-0">주차 입니다</p>
+                </div>
+
+                <div class="mt-6 text-sm text-gray-400">
+                    * 중간고사는 보통 8주차, 기말고사는 15주차입니다.
+                </div>
+            `;
+            container.appendChild(wrapper);
+        }
+
+        // [기능 3] 실습실 위치 시각화 및 QR - 컴팩트화
+        function renderMap() {
+            const timeInfo = getCurrentTimeInfo();
+            const todayClass = MOCK_DB.schedules.find(s => 
+                s.userId === state.currentUser.id && 
+                s.day === timeInfo.dayIdx && 
+                s.end >= timeInfo.timeStr
+            );
+            
+            const targetRoomCode = todayClass ? todayClass.room : '301호';
+            const roomInfo = MOCK_DB.locations[targetRoomCode];
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex gap-6 w-full max-w-5xl h-full fade-in items-stretch'; // max-w-6xl -> 5xl, gap-8 -> 6
+            
+            // 왼쪽: 지도
+            const mapSection = document.createElement('div');
+            mapSection.className = 'bg-white p-5 rounded-xl shadow-xl flex-1 flex flex-col border border-gray-100';
+            
+            let mapHtml = `
+                <h2 class="text-xl font-bold mb-3 flex items-center text-gray-800">
+                    <i class="fas fa-map text-blue-600 mr-2"></i> 3층 실습실 안내도
+                </h2>
+                <div class="floor-plan mb-4">
+                    <div class="room ${targetRoomCode === '301호' ? 'active' : ''}">301호</div>
+                    <div class="room ${targetRoomCode === '302호' ? 'active' : ''}">302호</div>
+                    <div class="room ${targetRoomCode === '303호' ? 'active' : ''}">303호</div>
+                    <div class="room ${targetRoomCode === '304호' ? 'active' : ''}">304호</div>
+                    <div class="corridor">복도 및 휴게 공간</div>
+                </div>
+                <div class="mt-auto bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <h3 class="font-bold text-base text-blue-800">📍 현재 안내 중: ${targetRoomCode}</h3>
+                    <p class="text-sm text-gray-600">${roomInfo.desc}</p>
+                    <p class="text-xs text-gray-400 mt-1">${todayClass ? '현재 회원님의 수업 장소입니다.' : '현재 예정된 수업이 없어 기본 실습실을 안내합니다.'}</p>
+                </div>
+            `;
+            mapSection.innerHTML = mapHtml;
+
+            // 오른쪽: QR 코드
+            const qrSection = document.createElement('div');
+            qrSection.className = 'bg-blue-600 text-white p-6 rounded-xl shadow-xl w-80 flex flex-col items-center justify-center text-center'; // w-1/3 -> w-80 (고정)
+            
+            const qrData = encodeURIComponent(`https://maps.google.com/?q=공학관+${targetRoomCode}`);
+            
+            qrSection.innerHTML = `
+                <div class="bg-white p-3 rounded-lg mb-4 shadow-lg">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${qrData}" alt="QR Code" class="w-36 h-36">
+                </div>
+                <h3 class="text-xl font-bold mb-1">모바일로 가져가기</h3>
+                <p class="text-blue-100 text-sm opacity-90 mb-4">QR코드를 스캔하여<br>지도 앱에서 확인하세요.</p>
+                <div class="flex items-center gap-2 text-xs bg-blue-700 px-3 py-1.5 rounded-full text-blue-100">
+                    <i class="fas fa-camera"></i> 카메라 스캔
+                </div>
+            `;
+
+            wrapper.appendChild(mapSection);
+            wrapper.appendChild(qrSection);
+            container.appendChild(wrapper);
+        }
+
+        render();
+    </script>
+</body>
+</html>
